@@ -1,0 +1,65 @@
+# Cronzee Health Monitor Configuration
+
+# Web UI server configuration
+server:
+  enabled: true
+  port: 8080
+
+# How often to check endpoints (duration format: 30s, 1m, 5m, etc.)
+check_interval: 30s
+
+# List of endpoints to monitor
+endpoints:
+  - name: "Google"
+    url: "https://www.google.com"
+    method: "GET"
+    timeout: 10s
+    expected_status: 200
+    failure_threshold: 3
+    success_threshold: 2
+
+  - name: "GitHub"
+    url: "https://github.com"
+    method: "GET"
+    timeout: 10s
+    expected_status: 200
+    failure_threshold: 3
+    success_threshold: 2
+
+# Alerting configuration
+alerting:
+  enabled: true
+
+  teams_enabled: true
+  teams_webhook: "https://default45364bf57a3743498c7fc406c7ce82.7c.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/3a135556723e4eba9d9e4e8c3c5af087/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=L5_o2txL7mxBcK_hIyGY0wWIDEex8RMabPxOEgL8FXI"
+
+
+
+# # Alerting configuration
+# alerting:
+#   enabled: false
+  
+#   # Generic webhook for custom integrations
+#   webhook_url: "https://your-webhook-endpoint.com/alerts"
+  
+#   # Slack integration
+#   slack_enabled: true
+#   slack_webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  
+#   # Email alerts
+#   email_enabled: false
+#   email_config:
+#     smtp_host: "smtp.gmail.com"
+#     smtp_port: 587
+#     from: "alerts@example.com"
+#     to:
+#       - "oncall@example.com"
+#       - "team@example.com"
+#     username: "your-email@gmail.com"
+#     password: "your-app-password"
+  
+#   # Custom fields to include in alerts
+#   custom_fields:
+#     environment: "production"
+#     team: "platform"
+#     severity: "high"

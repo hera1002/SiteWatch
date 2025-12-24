@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  cronzee:
+    build: .
+    container_name: cronzee-monitor
+    restart: unless-stopped
+    volumes:
+      # Mount your custom config file
+      - ./config.yaml:/root/config.yaml:ro
+    environment:
+      - TZ=America/New_York
+    # Optional: Add network configuration if monitoring internal services
+    # network_mode: "host"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
