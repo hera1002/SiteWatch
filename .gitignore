@@ -36,4 +36,4 @@ config.local.yaml
 *.log
 
 #
-cronzee.db
+sitewatch.db

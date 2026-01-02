@@ -11,7 +11,7 @@ A lightweight, configurable health monitoring application written in Go that che
   - Generic Webhooks
   - Slack notifications
   - Email alerts (SMTP)
-- 🎯 **Flexible Configuration**: YAML-based configuration
+- 🎯 **Flexible Configuration**: JSON-based configuration
 - 🔄 **Graceful Shutdown**: Proper signal handling
 - 📊 **Detailed Logging**: Track all health check results
 
@@ -34,32 +34,37 @@ go mod download
 go build -o cronzee
 
 # Run the application
-./cronzee -config config.yaml
+./cronzee -config config.json
 ```
 
 ## Configuration
 
-Create a `config.yaml` file with your monitoring configuration:
+Create a `config.json` file with your monitoring configuration:
 
-```yaml
-check_interval: 30s
-
-endpoints:
-  - name: "My API"
-    url: "https://api.example.com/health"
-    method: "GET"
-    timeout: 10s
-    expected_status: 200
-    failure_threshold: 3
-    success_threshold: 2
-    headers:
-      Authorization: "Bearer YOUR_TOKEN"
-
-alerting:
-  enabled: true
-  webhook_url: "https://your-webhook.com/alerts"
-  slack_enabled: true
-  slack_webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+```json
+{
+  "check_interval": "30s",
+  "endpoints": [
+    {
+      "name": "My API",
+      "url": "https://api.example.com/health",
+      "method": "GET",
+      "timeout": "10s",
+      "expected_status": 200,
+      "failure_threshold": 3,
+      "success_threshold": 2,
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  ],
+  "alerting": {
+    "enabled": true,
+    "webhook_url": "https://your-webhook.com/alerts",
+    "slack_enabled": true,
+    "slack_webhook": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  }
+}
 ```
 
 ### Configuration Options
@@ -94,11 +99,11 @@ alerting:
 ### Basic Usage
 
 ```bash
-# Run with default config file (config.yaml)
+# Run with default config file (config.json)
 ./cronzee
 
 # Run with custom config file
-./cronzee -config /path/to/config.yaml
+./cronzee -config /path/to/config.json
 ```
 
 ### Running as a Service
@@ -116,7 +121,7 @@ After=network.target
 Type=simple
 User=cronzee
 WorkingDirectory=/opt/cronzee
-ExecStart=/opt/cronzee/cronzee -config /opt/cronzee/config.yaml
+ExecStart=/opt/cronzee/cronzee -config /opt/cronzee/config.json
 Restart=always
 RestartSec=10
 
@@ -130,32 +135,6 @@ Enable and start:
 sudo systemctl enable cronzee
 sudo systemctl start cronzee
 sudo systemctl status cronzee
-```
-
-#### Docker
-
-Create a `Dockerfile`:
-
-```dockerfile
-FROM golang:1.21-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go mod download
-RUN go build -o cronzee
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/cronzee .
-COPY config.yaml .
-CMD ["./cronzee"]
-```
-
-Build and run:
-
-```bash
-docker build -t cronzee .
-docker run -d --name cronzee -v $(pwd)/config.yaml:/root/config.yaml cronzee
 ```
 
 ## Alert Formats

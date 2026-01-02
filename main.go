@@ -2,58 +2,81 @@ package main
 
 import (
 	"flag"
-	"log"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/ashanmugaraja/cronzee/app/config"
+	"github.com/ashanmugaraja/cronzee/app/logger"
+	"github.com/ashanmugaraja/cronzee/app/models"
+	"github.com/ashanmugaraja/cronzee/app/router"
+	"github.com/ashanmugaraja/cronzee/app/worker"
 )
 
 func main() {
-	configFile := flag.String("config", "config.yaml", "Path to configuration file")
-	dbPath := flag.String("db", "cronzee.db", "Path to database file")
+	// Initialize logger
+	logger.Init()
+
+	// Parse command-line flags
+	configFile := flag.String("config", "config.json", "Path to configuration file")
+	dbPath := flag.String("db", "sitewatch.db", "Path to database file")
 	flag.Parse()
 
+	logger.Infof("Starting Site Watch...")
+
 	// Load configuration
-	config, err := LoadConfig(*configFile)
+	cfg, err := config.LoadConfig(*configFile)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.Errorf("Failed to load configuration: %v", err)
+		os.Exit(1)
 	}
 
 	// Initialize database
-	db, err := NewDatabase(*dbPath)
+	db, err := models.NewDatabase(*dbPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logger.Errorf("Failed to initialize database: %v", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
-	// Note: Endpoints are loaded only from database, not from config.yaml
-	// Use the web UI to add/remove endpoints
-
-	log.Printf("Starting Site Watch...")
-
-	// Initialize monitor with database
-	monitor := NewMonitor(config, db)
+	// Initialize monitor
+	monitor := worker.NewMonitor(cfg, db)
 
 	// Count endpoints from database
 	endpoints, _ := db.GetAllEndpoints()
-	log.Printf("Monitoring %d endpoints with check interval: %s", len(endpoints), config.CheckInterval)
-
-	// Start web server if enabled
-	if config.Server.Enabled {
-		server := NewServer(monitor, db, config.Server.Port)
-		server.Start()
-	}
+	logger.Infof("Monitoring %d endpoints with check interval: %s", len(endpoints), cfg.CheckInterval.Duration)
 
 	// Start monitoring
 	monitor.Start()
+
+	// Start web server if enabled
+	if cfg.Server.Enabled {
+		r := router.NewRouter(monitor, db, cfg)
+		addr := fmt.Sprintf(":%d", cfg.Server.Port)
+		
+		server := &http.Server{
+			Addr:    addr,
+			Handler: r,
+		}
+
+		go func() {
+			logger.Infof("Web server starting on http://localhost%s", addr)
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Errorf("Server error: %v", err)
+			}
+		}()
+	}
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down Site Watch...")
+	logger.Infof("Shutting down Site Watch...")
 	monitor.Stop()
 	time.Sleep(1 * time.Second)
+	logger.Infof("Shutdown complete")
 }

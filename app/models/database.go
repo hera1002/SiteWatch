@@ -1,12 +1,14 @@
-package main
+package models
 
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
+	"github.com/ashanmugaraja/cronzee/app/logger"
+	"github.com/ashanmugaraja/cronzee/app/structs"
+	"github.com/ashanmugaraja/cronzee/app/utils"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -24,34 +26,6 @@ const (
 type Database struct {
 	db *bolt.DB
 	mu sync.RWMutex
-}
-
-// StoredEndpoint represents an endpoint stored in the database
-type StoredEndpoint struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name"`
-	URL              string            `json:"url"`
-	Method           string            `json:"method"`
-	Timeout          time.Duration     `json:"timeout"`
-	CheckInterval    time.Duration     `json:"check_interval"`
-	ExpectedStatus   int               `json:"expected_status"`
-	Headers          map[string]string `json:"headers"`
-	FailureThreshold int               `json:"failure_threshold"`
-	SuccessThreshold int               `json:"success_threshold"`
-	Enabled          bool              `json:"enabled"`
-	AlertsSuppressed bool              `json:"alerts_suppressed"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
-}
-
-// HealthCheckRecord represents a single health check result stored in history
-type HealthCheckRecord struct {
-	EndpointID   string        `json:"endpoint_id"`
-	Timestamp    time.Time     `json:"timestamp"`
-	Status       string        `json:"status"`
-	ResponseTime time.Duration `json:"response_time"`
-	StatusCode   int           `json:"status_code"`
-	Error        string        `json:"error,omitempty"`
 }
 
 // NewDatabase creates and initializes a new BoltDB database
@@ -91,7 +65,7 @@ func (d *Database) Close() error {
 }
 
 // SaveEndpoint saves or updates an endpoint
-func (d *Database) SaveEndpoint(endpoint *StoredEndpoint) error {
+func (d *Database) SaveEndpoint(endpoint *structs.StoredEndpoint) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -135,11 +109,11 @@ func (d *Database) SaveEndpoint(endpoint *StoredEndpoint) error {
 }
 
 // GetEndpoint retrieves an endpoint by ID
-func (d *Database) GetEndpoint(id string) (*StoredEndpoint, error) {
+func (d *Database) GetEndpoint(id string) (*structs.StoredEndpoint, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	var endpoint StoredEndpoint
+	var endpoint structs.StoredEndpoint
 	err := d.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(EndpointsBucket))
 		data := b.Get([]byte(id))
@@ -155,15 +129,15 @@ func (d *Database) GetEndpoint(id string) (*StoredEndpoint, error) {
 }
 
 // GetAllEndpoints retrieves all endpoints
-func (d *Database) GetAllEndpoints() ([]*StoredEndpoint, error) {
+func (d *Database) GetAllEndpoints() ([]*structs.StoredEndpoint, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	var endpoints []*StoredEndpoint
+	var endpoints []*structs.StoredEndpoint
 	err := d.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(EndpointsBucket))
 		return b.ForEach(func(k, v []byte) error {
-			var endpoint StoredEndpoint
+			var endpoint structs.StoredEndpoint
 			if err := json.Unmarshal(v, &endpoint); err != nil {
 				return err
 			}
@@ -178,13 +152,13 @@ func (d *Database) GetAllEndpoints() ([]*StoredEndpoint, error) {
 }
 
 // GetEnabledEndpoints retrieves only enabled endpoints
-func (d *Database) GetEnabledEndpoints() ([]*StoredEndpoint, error) {
+func (d *Database) GetEnabledEndpoints() ([]*structs.StoredEndpoint, error) {
 	all, err := d.GetAllEndpoints()
 	if err != nil {
 		return nil, err
 	}
 
-	var enabled []*StoredEndpoint
+	var enabled []*structs.StoredEndpoint
 	for _, ep := range all {
 		if ep.Enabled {
 			enabled = append(enabled, ep)
@@ -245,7 +219,7 @@ func (d *Database) UnsuppressAlerts(id string) error {
 }
 
 // SaveHealthCheckRecord saves a health check result to history
-func (d *Database) SaveHealthCheckRecord(record *HealthCheckRecord) error {
+func (d *Database) SaveHealthCheckRecord(record *structs.HealthCheckRecord) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -265,11 +239,11 @@ func (d *Database) SaveHealthCheckRecord(record *HealthCheckRecord) error {
 }
 
 // GetHealthHistory retrieves health check history for an endpoint
-func (d *Database) GetHealthHistory(endpointID string, limit int) ([]*HealthCheckRecord, error) {
+func (d *Database) GetHealthHistory(endpointID string, limit int) ([]*structs.HealthCheckRecord, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	var records []*HealthCheckRecord
+	var records []*structs.HealthCheckRecord
 	prefix := []byte(endpointID + ":")
 
 	err := d.db.View(func(tx *bolt.Tx) error {
@@ -278,7 +252,7 @@ func (d *Database) GetHealthHistory(endpointID string, limit int) ([]*HealthChec
 
 		// Collect all matching records
 		for k, v := c.Seek(prefix); k != nil && len(k) >= len(prefix) && string(k[:len(prefix)]) == string(prefix); k, v = c.Next() {
-			var record HealthCheckRecord
+			var record structs.HealthCheckRecord
 			if err := json.Unmarshal(v, &record); err != nil {
 				continue
 			}
@@ -291,7 +265,6 @@ func (d *Database) GetHealthHistory(endpointID string, limit int) ([]*HealthChec
 	}
 
 	// Sort by timestamp descending and limit
-	// Records are already sorted by key (timestamp), so reverse for descending
 	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
 		records[i], records[j] = records[j], records[i]
 	}
@@ -318,7 +291,7 @@ func (d *Database) CleanupOldData() error {
 		var keysToDelete [][]byte
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var record HealthCheckRecord
+			var record structs.HealthCheckRecord
 			if err := json.Unmarshal(v, &record); err != nil {
 				continue
 			}
@@ -338,7 +311,7 @@ func (d *Database) CleanupOldData() error {
 	})
 
 	if err == nil && deletedCount > 0 {
-		log.Printf("Cleaned up %d old health check records (older than %d days)", deletedCount, DataRetentionDays)
+		logger.Infof("Cleaned up %d old health check records (older than %d days)", deletedCount, DataRetentionDays)
 	}
 
 	return err
@@ -351,25 +324,25 @@ func (d *Database) startCleanupRoutine() {
 
 	// Run initial cleanup
 	if err := d.CleanupOldData(); err != nil {
-		log.Printf("Error during initial cleanup: %v", err)
+		logger.Errorf("Error during initial cleanup: %v", err)
 	}
 
 	for range ticker.C {
 		if err := d.CleanupOldData(); err != nil {
-			log.Printf("Error during cleanup: %v", err)
+			logger.Errorf("Error during cleanup: %v", err)
 		}
 	}
 }
 
 // MigrateFromConfig imports endpoints from config file to database
-func (d *Database) MigrateFromConfig(endpoints []Endpoint) error {
+func (d *Database) MigrateFromConfig(endpoints []structs.Endpoint) error {
 	for _, ep := range endpoints {
-		stored := &StoredEndpoint{
-			ID:               generateIDWithURL(ep.Name, ep.URL),
+		stored := &structs.StoredEndpoint{
+			ID:               utils.GenerateIDWithURL(ep.Name, ep.URL),
 			Name:             ep.Name,
 			URL:              ep.URL,
 			Method:           ep.Method,
-			Timeout:          ep.Timeout,
+			Timeout:          ep.Timeout.Duration,
 			ExpectedStatus:   ep.ExpectedStatus,
 			Headers:          ep.Headers,
 			FailureThreshold: ep.FailureThreshold,
@@ -388,67 +361,7 @@ func (d *Database) MigrateFromConfig(endpoints []Endpoint) error {
 		if err := d.SaveEndpoint(stored); err != nil {
 			return fmt.Errorf("failed to migrate endpoint %s: %w", ep.Name, err)
 		}
-		log.Printf("Migrated endpoint from config: %s", ep.Name)
+		logger.Infof("Migrated endpoint from config: %s", ep.Name)
 	}
 	return nil
-}
-
-// generateID creates a URL-safe ID from name and URL combination
-// This ensures that endpoints with the same name but different URLs have different IDs
-func generateID(name string) string {
-	id := ""
-	for _, c := range name {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
-			id += string(c)
-		} else if c == ' ' || c == '-' || c == '_' {
-			id += "-"
-		}
-	}
-	return id
-}
-
-// generateIDWithURL creates a URL-safe ID from name and URL combination
-func generateIDWithURL(name, url string) string {
-	combined := name + "-" + url
-	id := ""
-	for _, c := range combined {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
-			id += string(c)
-		} else if c == ' ' || c == '-' || c == '_' || c == '/' || c == ':' || c == '.' {
-			id += "-"
-		}
-	}
-	// Trim multiple dashes and trailing dashes
-	result := ""
-	prevDash := false
-	for _, c := range id {
-		if c == '-' {
-			if !prevDash {
-				result += string(c)
-			}
-			prevDash = true
-		} else {
-			result += string(c)
-			prevDash = false
-		}
-	}
-	// Trim trailing dash
-	for len(result) > 0 && result[len(result)-1] == '-' {
-		result = result[:len(result)-1]
-	}
-	return result
-}
-
-// ToEndpoint converts StoredEndpoint to Endpoint for monitoring
-func (s *StoredEndpoint) ToEndpoint() Endpoint {
-	return Endpoint{
-		Name:             s.Name,
-		URL:              s.URL,
-		Method:           s.Method,
-		Timeout:          s.Timeout,
-		ExpectedStatus:   s.ExpectedStatus,
-		Headers:          s.Headers,
-		FailureThreshold: s.FailureThreshold,
-		SuccessThreshold: s.SuccessThreshold,
-	}
 }

@@ -1,30 +1,32 @@
-package main
+package worker
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/smtp"
 	"strings"
 	"time"
+
+	"github.com/ashanmugaraja/cronzee/app/logger"
+	"github.com/ashanmugaraja/cronzee/app/structs"
 )
 
 // Alerter handles sending alerts through various channels
 type Alerter struct {
-	config *Alerting
+	config *structs.Alerting
 }
 
 // NewAlerter creates a new alerter
-func NewAlerter(config *Alerting) *Alerter {
+func NewAlerter(config *structs.Alerting) *Alerter {
 	return &Alerter{
 		config: config,
 	}
 }
 
 // SendFailureAlert sends an alert when an endpoint becomes unhealthy
-func (a *Alerter) SendFailureAlert(endpoint Endpoint, state *EndpointState) {
+func (a *Alerter) SendFailureAlert(endpoint structs.Endpoint, state *structs.EndpointState) {
 	if !a.config.Enabled {
 		return
 	}
@@ -49,14 +51,13 @@ func (a *Alerter) SendFailureAlert(endpoint Endpoint, state *EndpointState) {
 	subject := fmt.Sprintf("[CRONZEE] Alert: %s is DOWN", endpoint.Name)
 
 	a.sendAlert(subject, message, "failure", endpoint, state)
-	// 🔔 NEW: Teams alert
 	if a.config.TeamsEnabled && a.config.TeamsWebhook != "" {
-		a.sendTeamsAlert(endpoint,state)
+		a.sendTeamsAlert(endpoint, state)
 	}
 }
 
 // SendRecoveryAlert sends an alert when an endpoint recovers
-func (a *Alerter) SendRecoveryAlert(endpoint Endpoint, state *EndpointState) {
+func (a *Alerter) SendRecoveryAlert(endpoint structs.Endpoint, state *structs.EndpointState) {
 	if !a.config.Enabled {
 		return
 	}
@@ -83,25 +84,22 @@ func (a *Alerter) SendRecoveryAlert(endpoint Endpoint, state *EndpointState) {
 }
 
 // sendAlert sends alerts through configured channels
-func (a *Alerter) sendAlert(subject, message, alertType string, endpoint Endpoint, state *EndpointState) {
-	// Send webhook alert
+func (a *Alerter) sendAlert(subject, message, alertType string, endpoint structs.Endpoint, state *structs.EndpointState) {
 	if a.config.WebhookURL != "" {
 		go a.sendWebhookAlert(subject, message, alertType, endpoint, state)
 	}
 
-	// Send Slack alert
 	if a.config.SlackEnabled && a.config.SlackWebhook != "" {
 		go a.sendSlackAlert(subject, message, alertType, endpoint, state)
 	}
 
-	// Send email alert
 	if a.config.EmailEnabled {
 		go a.sendEmailAlert(subject, message)
 	}
 }
 
 // sendWebhookAlert sends a generic webhook alert
-func (a *Alerter) sendWebhookAlert(subject, message, alertType string, endpoint Endpoint, state *EndpointState) {
+func (a *Alerter) sendWebhookAlert(subject, message, alertType string, endpoint structs.Endpoint, state *structs.EndpointState) {
 	payload := map[string]interface{}{
 		"subject":    subject,
 		"message":    message,
@@ -121,33 +119,32 @@ func (a *Alerter) sendWebhookAlert(subject, message, alertType string, endpoint 
 		"timestamp": time.Now().Format(time.RFC3339),
 	}
 
-	// Add custom fields
 	for key, value := range a.config.CustomFields {
 		payload[key] = value
 	}
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Failed to marshal webhook payload: %v", err)
+		logger.Errorf("Failed to marshal webhook payload: %v", err)
 		return
 	}
 
 	resp, err := http.Post(a.config.WebhookURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to send webhook alert: %v", err)
+		logger.Errorf("Failed to send webhook alert: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("Webhook alert sent successfully for endpoint: %s", endpoint.Name)
+		logger.Infof("Webhook alert sent successfully for endpoint: %s", endpoint.Name)
 	} else {
-		log.Printf("Webhook alert failed with status code: %d", resp.StatusCode)
+		logger.Errorf("Webhook alert failed with status code: %d", resp.StatusCode)
 	}
 }
 
 // sendSlackAlert sends an alert to Slack
-func (a *Alerter) sendSlackAlert(subject, message, alertType string, endpoint Endpoint, state *EndpointState) {
+func (a *Alerter) sendSlackAlert(subject, message, alertType string, endpoint structs.Endpoint, state *structs.EndpointState) {
 	color := "danger"
 	emoji := "🔴"
 	if alertType == "recovery" {
@@ -161,26 +158,10 @@ func (a *Alerter) sendSlackAlert(subject, message, alertType string, endpoint En
 			{
 				"color": color,
 				"fields": []map[string]interface{}{
-					{
-						"title": "Endpoint",
-						"value": endpoint.Name,
-						"short": true,
-					},
-					{
-						"title": "URL",
-						"value": endpoint.URL,
-						"short": true,
-					},
-					{
-						"title": "Status",
-						"value": string(state.Status),
-						"short": true,
-					},
-					{
-						"title": "Response Time",
-						"value": fmt.Sprintf("%v", state.ResponseTime),
-						"short": true,
-					},
+					{"title": "Endpoint", "value": endpoint.Name, "short": true},
+					{"title": "URL", "value": endpoint.URL, "short": true},
+					{"title": "Status", "value": string(state.Status), "short": true},
+					{"title": "Response Time", "value": fmt.Sprintf("%v", state.ResponseTime), "short": true},
 				},
 				"footer": "Cronzee Health Monitor",
 				"ts":     time.Now().Unix(),
@@ -199,28 +180,28 @@ func (a *Alerter) sendSlackAlert(subject, message, alertType string, endpoint En
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Failed to marshal Slack payload: %v", err)
+		logger.Errorf("Failed to marshal Slack payload: %v", err)
 		return
 	}
 
 	resp, err := http.Post(a.config.SlackWebhook, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to send Slack alert: %v", err)
+		logger.Errorf("Failed to send Slack alert: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("Slack alert sent successfully for endpoint: %s", endpoint.Name)
+		logger.Infof("Slack alert sent successfully for endpoint: %s", endpoint.Name)
 	} else {
-		log.Printf("Slack alert failed with status code: %d", resp.StatusCode)
+		logger.Errorf("Slack alert failed with status code: %d", resp.StatusCode)
 	}
 }
 
 // sendEmailAlert sends an email alert
 func (a *Alerter) sendEmailAlert(subject, message string) {
 	if a.config.EmailConfig.SMTPHost == "" {
-		log.Println("Email SMTP host not configured")
+		logger.Error("Email SMTP host not configured")
 		return
 	}
 
@@ -256,20 +237,19 @@ func (a *Alerter) sendEmailAlert(subject, message string) {
 	)
 
 	if err != nil {
-		log.Printf("Failed to send email alert: %v", err)
+		logger.Errorf("Failed to send email alert: %v", err)
 		return
 	}
 
-	log.Printf("Email alert sent successfully to: %s", to)
+	logger.Infof("Email alert sent successfully to: %s", to)
 }
 
-//send alerts to teams 
-
-func (a *Alerter) sendTeamsAlert(endpoint Endpoint, state *EndpointState) {
-
+// sendTeamsAlert sends alerts to Microsoft Teams
+func (a *Alerter) sendTeamsAlert(endpoint structs.Endpoint, state *structs.EndpointState) {
 	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
 		return
 	}
+	
 	loc, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		loc = time.FixedZone("IST", 5*60*60+30*60)
@@ -278,17 +258,17 @@ func (a *Alerter) sendTeamsAlert(endpoint Endpoint, state *EndpointState) {
 	istTime := state.LastCheck.In(loc)
 
 	payload := map[string]interface{}{
-		"service":        endpoint.Name,
-		"url":            endpoint.URL,
-		"status":         string(state.Status),
-		"failures":       state.ConsecutiveFailures,
-		"response_time":  state.ResponseTime.String(),
-		"timestamp":      istTime.Format("02 Jan 2006, 03:04:05 PM"),
+		"service":       endpoint.Name,
+		"url":           endpoint.URL,
+		"status":        string(state.Status),
+		"failures":      state.ConsecutiveFailures,
+		"response_time": state.ResponseTime.String(),
+		"timestamp":     istTime.Format("02 Jan 2006, 03:04:05 PM"),
 	}
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Teams alert marshal error: %v", err)
+		logger.Errorf("Teams alert marshal error: %v", err)
 		return
 	}
 
@@ -298,15 +278,82 @@ func (a *Alerter) sendTeamsAlert(endpoint Endpoint, state *EndpointState) {
 		bytes.NewBuffer(jsonData),
 	)
 	if err != nil {
-		log.Printf("Teams alert failed: %v", err)
+		logger.Errorf("Teams alert failed: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("Teams alert sent for %s", endpoint.Name)
+		logger.Infof("Teams alert sent for %s", endpoint.Name)
 	} else {
-		log.Printf("Teams webhook returned status %d", resp.StatusCode)
+		logger.Errorf("Teams webhook returned status %d", resp.StatusCode)
 	}
 }
 
+// SSLExpiryInfo holds information about an expiring SSL certificate
+type SSLExpiryInfo struct {
+	EndpointName string
+	URL          string
+	ExpiryDate   time.Time
+	DaysToExpiry int
+}
+
+// SendSSLExpirySummary sends a daily summary of expiring SSL certificates to Teams
+func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
+	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
+		return
+	}
+
+	if len(expiringCerts) == 0 {
+		logger.Info("No expiring SSL certificates to report")
+		return
+	}
+
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		loc = time.FixedZone("IST", 5*60*60+30*60)
+	}
+
+	now := time.Now().In(loc)
+
+	// Build the summary message
+	var certList []map[string]interface{}
+	for _, cert := range expiringCerts {
+		certList = append(certList, map[string]interface{}{
+			"endpoint":       cert.EndpointName,
+			"url":            cert.URL,
+			"expiry_date":    cert.ExpiryDate.Format("02 Jan 2006"),
+			"days_remaining": cert.DaysToExpiry,
+		})
+	}
+
+	payload := map[string]interface{}{
+		"alert_type":     "ssl_expiry_summary",
+		"total_expiring": len(expiringCerts),
+		"certificates":   certList,
+		"timestamp":      now.Format("02 Jan 2006, 03:04:05 PM"),
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		logger.Errorf("Failed to marshal SSL expiry summary: %v", err)
+		return
+	}
+
+	resp, err := http.Post(
+		a.config.TeamsWebhook,
+		"application/json",
+		bytes.NewBuffer(jsonData),
+	)
+	if err != nil {
+		logger.Errorf("Failed to send SSL expiry summary to Teams: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		logger.Infof("SSL expiry summary sent to Teams (%d certificates)", len(expiringCerts))
+	} else {
+		logger.Errorf("Teams webhook returned status %d for SSL expiry summary", resp.StatusCode)
+	}
+}
