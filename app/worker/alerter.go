@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/smtp"
+	"sort"
 	"strings"
 	"time"
 
@@ -249,21 +250,47 @@ func (a *Alerter) sendTeamsAlert(endpoint structs.Endpoint, state *structs.Endpo
 	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
 		return
 	}
-	
+
 	loc, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		loc = time.FixedZone("IST", 5*60*60+30*60)
 	}
 
-	istTime := state.LastCheck.In(loc)
+	nowIST := time.Now().In(loc)
+	lastSuccess := state.LastCheck.In(loc)
+
+	downFor := "-"
+	if state.Status != "HEALTHY" {
+		downFor = time.Since(state.LastStatusChange).Round(time.Second).String()
+	}
+
+	statusIcon := "🟢 UP"
+	if state.Status != "HEALTHY" {
+		statusIcon = "🔴 DOWN"
+	}
+
+	var builder strings.Builder
+
+	builder.WriteString("📢 **HEALTH MONITOR ALERT**\n\n")
+	builder.WriteString("| Site Name | URL | Status | Last Success Time | Down For | Failure Count | Response Time | Time |\n")
+	builder.WriteString("|---|---|---|---|---|---|---|---|\n")
+
+	builder.WriteString(fmt.Sprintf(
+		"| %s | %s | %s | %s | %s | %d | %s | %s |\n",
+		endpoint.Name,
+		endpoint.URL,
+		statusIcon,
+		lastSuccess.Format("02 Jan 2006 03:04 PM"),
+		downFor,
+		state.ConsecutiveFailures,
+		state.ResponseTime.String(),
+		nowIST.Format("02 Jan 2006 03:04 PM"),
+	))
+
+	builder.WriteString("\n🔗 For more info visit: https://sitewatch.ezeebits.in\n")
 
 	payload := map[string]interface{}{
-		"service":       endpoint.Name,
-		"url":           endpoint.URL,
-		"status":        string(state.Status),
-		"failures":      state.ConsecutiveFailures,
-		"response_time": state.ResponseTime.String(),
-		"timestamp":     istTime.Format("02 Jan 2006, 03:04:05 PM"),
+		"text": builder.String(),
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -290,6 +317,7 @@ func (a *Alerter) sendTeamsAlert(endpoint structs.Endpoint, state *structs.Endpo
 	}
 }
 
+
 // SSLExpiryInfo holds information about an expiring SSL certificate
 type SSLExpiryInfo struct {
 	EndpointName string
@@ -298,7 +326,7 @@ type SSLExpiryInfo struct {
 	DaysToExpiry int
 }
 
-// SendSSLExpirySummary sends a daily summary of expiring SSL certificates to Teams
+
 func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
 	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
 		return
@@ -309,29 +337,39 @@ func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
 		return
 	}
 
-	loc, err := time.LoadLocation("Asia/Kolkata")
-	if err != nil {
-		loc = time.FixedZone("IST", 5*60*60+30*60)
-	}
+	// Sort by nearest expiry (ascending)
+	sort.Slice(expiringCerts, func(i, j int) bool {
+		return expiringCerts[i].DaysToExpiry < expiringCerts[j].DaysToExpiry
+	})
 
-	now := time.Now().In(loc)
+	// 🔹 Build MARKDOWN table for Teams
+	var builder strings.Builder
 
-	// Build the summary message
-	var certList []map[string]interface{}
+	builder.WriteString("📢**SSL EXPIRY NOTIFICATIONS**\n\n")
+	builder.WriteString("| Endpoint | URL | Expiry Date | Days Left | Severity |\n")
+	builder.WriteString("|---------|-----|------------|-----------|----------|\n")
+
 	for _, cert := range expiringCerts {
-		certList = append(certList, map[string]interface{}{
-			"endpoint":       cert.EndpointName,
-			"url":            cert.URL,
-			"expiry_date":    cert.ExpiryDate.Format("02 Jan 2006"),
-			"days_remaining": cert.DaysToExpiry,
-		})
+		status := "⚠️ Warning"
+		if cert.DaysToExpiry <= 7 {
+			status = "🚨 Critical"
+		}
+
+		builder.WriteString(fmt.Sprintf(
+			"| %s | %s | %s | %d | %s |\n",
+			cert.EndpointName,
+			cert.URL,
+			cert.ExpiryDate.Format("02 Jan 2006"),
+			cert.DaysToExpiry,
+			status,
+		))
 	}
 
+	builder.WriteString("\n🔗 For more info visit: https://sitewatch.ezeebits.in\n")
+
+	// 🔹 Send markdown text (NOT array JSON)
 	payload := map[string]interface{}{
-		"alert_type":     "ssl_expiry_summary",
-		"total_expiring": len(expiringCerts),
-		"certificates":   certList,
-		"timestamp":      now.Format("02 Jan 2006, 03:04:05 PM"),
+		"text": builder.String(),
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -352,8 +390,9 @@ func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		logger.Infof("SSL expiry summary sent to Teams (%d certificates)", len(expiringCerts))
+		logger.Infof("SSL expiry summary sent to Teams (%d endpoints)", len(expiringCerts))
 	} else {
-		logger.Errorf("Teams webhook returned status %d for SSL expiry summary", resp.StatusCode)
+		logger.Errorf("Teams webhook returned status %d", resp.StatusCode)
 	}
 }
+

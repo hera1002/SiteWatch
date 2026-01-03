@@ -404,8 +404,8 @@ function renderEndpoints() {
         
         // Badge: lock+heart for SSL+Health, lock+greyed heart for SSL only
         const monitorBadge = monitorHealth 
-            ? '<span class="monitor-badge" title="SSL + Health Monitoring">🔒❤️</span>'
-            : '<span class="monitor-badge ssl-only-badge" title="SSL Monitoring Only">🔒<span class="greyed">💔</span></span>';
+            ? '<span class="monitor-badge" title="SSL + Health Monitoring">🔒🚦</span>'
+            : '<span class="monitor-badge ssl-only-badge" title="SSL Monitoring Only">🔒<span class="greyed">🚦</span></span>';
         
         // History/status section - different for SSL-only vs health monitored
         let historySection;
@@ -446,7 +446,7 @@ function renderEndpoints() {
                  data-interval="${formatInterval(endpoint.check_interval)}" data-timeout="${formatInterval(endpoint.timeout)}"
                  data-failure="${endpoint.failure_threshold || 3}" data-success="${endpoint.success_threshold || 2}"
                  data-monitor-health="${monitorHealth}">
-                ${monitorHealth ? '<button class="icon-btn edit" data-action="history" title="View Health History">📊</button>' : '<button class="icon-btn edit" data-action="enable-health" title="Enable Health Monitoring">❤️</button>'}
+                ${monitorHealth ? '<button class="icon-btn edit" data-action="history" title="View Health History">📊</button>' : '<button class="icon-btn edit" data-action="enable-health" title="Enable Health Monitoring">🚦</button>'}
                 <button class="icon-btn edit" data-action="edit" title="Edit Endpoint Settings">✏️</button>
                 <button class="icon-btn ${isEnabled ? 'toggle-on' : 'toggle-off'}" data-action="${isEnabled ? 'disable' : 'enable'}" title="${isEnabled ? 'Disable Monitoring' : 'Enable Monitoring'}">${isEnabled ? '⏸️' : '▶️'}</button>
                 ${monitorHealth ? `<button class="icon-btn ${isSuppressed ? 'alert-on' : 'alert-off'}" data-action="${isSuppressed ? 'unsuppress' : 'suppress'}" title="${isSuppressed ? 'Enable Alerts' : 'Suppress Alerts'}">${isSuppressed ? '🔔' : '🔕'}</button>` : ''}
@@ -484,7 +484,7 @@ function renderEndpoints() {
     }
     
     // Update stat counts
-    document.getElementById('total-endpoints').innerHTML = total + ' <span class="stat-detail">| ' + total + ' 🔒 ' + healthMonitored + ' ❤️</span>';
+    document.getElementById('total-endpoints').innerHTML = total + ' <span class="stat-detail">| ' + total + ' 🔒 ' + healthMonitored + ' 🚦</span>';
     document.getElementById('healthy-count').textContent = healthy;
     document.getElementById('unhealthy-count').textContent = unhealthy;
     document.getElementById('expiring-certs-count').textContent = expiringCerts;

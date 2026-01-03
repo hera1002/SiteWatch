@@ -4,7 +4,7 @@
     "port": 8080
   },
   "check_interval": "30s",
-  "ssl_expiry_warning_days": 90,
+  "ssl_expiry_warning_days": 30,
   "ssl_summary_time": "01:05",
   "admin_passkey": "admin123",
   "endpoints": [
@@ -30,6 +30,6 @@
   "alerting": {
     "enabled": true,
     "teams_enabled": true,
-    "teams_webhook": "https://default45364bf57a3743498c7fc406c7ce82.7c.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/3a135556723e4eba9d9e4e8c3c5af087/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=L5_o2txL7mxBcK_hIyGY0wWIDEex8RMabPxOEgL8FXI"
+    "teams_webhook": "https://default45364bf57a3743498c7fc406c7ce82.7c.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/a0656a60d01d40a7bd27d91a9bc369c6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=jurQyuNRupIti3lo4SO8udPA2Hj1IDr-2GFHA3QH5Kk"
   }
 }
