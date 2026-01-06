@@ -12,6 +12,7 @@ import (
 
 	"github.com/ashanmugaraja/cronzee/app/logger"
 	"github.com/ashanmugaraja/cronzee/app/structs"
+	"github.com/ashanmugaraja/cronzee/app/utils"
 )
 
 // Alerter handles sending alerts through various channels
@@ -52,8 +53,90 @@ func (a *Alerter) SendFailureAlert(endpoint structs.Endpoint, state *structs.End
 	subject := fmt.Sprintf("[CRONZEE] Alert: %s is DOWN", endpoint.Name)
 
 	a.sendAlert(subject, message, "failure", endpoint, state)
-	if a.config.TeamsEnabled && a.config.TeamsWebhook != "" {
-		a.sendTeamsAlert(endpoint, state)
+}
+
+func (a *Alerter) SendGroupedTeamsHealthAlert(interval time.Duration, checkTime time.Time, unhealthyStates []*structs.EndpointState) {
+	if !a.config.Enabled {
+		return
+	}
+	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
+		return
+	}
+	if len(unhealthyStates) == 0 {
+		return
+	}
+
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		loc = time.FixedZone("IST", 5*60*60+30*60)
+	}
+
+	nowIST := checkTime.In(loc)
+
+	// Sort by longest down duration (descending)
+	sort.Slice(unhealthyStates, func(i, j int) bool {
+		return unhealthyStates[i].LastStatusChange.Before(unhealthyStates[j].LastStatusChange)
+	})
+
+	var builder strings.Builder
+
+	builder.WriteString(
+	fmt.Sprintf("📢 **HEALTH MONITOR ALERT (%d min)**\n\n", int(interval.Minutes())),
+)
+	builder.WriteString("| Site Name | URL | Status | Last Success Time | Down Duration | Failure Count | Response Time |\n")
+	builder.WriteString("|---|---|---|---|---|---|---|\n")
+
+	for _, state := range unhealthyStates {
+		lastSuccess := "-"
+		if !state.LastSuccess.IsZero() {
+			lastSuccess = state.LastSuccess.In(loc).Format("02 Jan 2006 03:04 PM")
+		}
+
+		downFor := "-"
+		if !state.LastSuccess.IsZero() {
+			downFor = utils.FormatDurationDHm(nowIST.Sub(state.LastSuccess.In(loc)))
+
+		}
+
+		builder.WriteString(fmt.Sprintf(
+			"| %s | %s | %s | %s | %s | %d | %s |\n",
+			state.Endpoint.Name,
+			state.Endpoint.URL,
+			"🔴 DOWN",
+			lastSuccess,
+			downFor,
+			state.ConsecutiveFailures,
+			state.ResponseTime.String(),
+		))
+	}
+
+	builder.WriteString("\n🔗 For more info visit: https://sitewatch.ezeebits.in\n")
+
+	payload := map[string]interface{}{
+		"text": builder.String(),
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		logger.Errorf("Teams grouped alert marshal error: %v", err)
+		return
+	}
+
+	resp, err := http.Post(
+		a.config.TeamsWebhook,
+		"application/json",
+		bytes.NewBuffer(jsonData),
+	)
+	if err != nil {
+		logger.Errorf("Teams grouped alert failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		logger.Infof("Teams grouped alert sent (%d endpoints, interval=%s)", len(unhealthyStates), interval.String())
+	} else {
+		logger.Errorf("Teams webhook returned status %d", resp.StatusCode)
 	}
 }
 

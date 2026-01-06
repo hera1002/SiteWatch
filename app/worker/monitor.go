@@ -243,14 +243,25 @@ func (m *Monitor) UnsuppressAlerts(id string) error {
 	return nil
 }
 
+func isStandardHealthInterval(d time.Duration) bool {
+	switch d {
+	case 1 * time.Minute, 2 * time.Minute, 5 * time.Minute:
+		return true
+	default:
+		return false
+	}
+}
+
 // Start begins monitoring all endpoints
 func (m *Monitor) Start() {
-	m.ticker = time.NewTicker(5 * time.Second)
-	
 	// Perform initial check
 	m.checkAllEndpoints()
 
-	// Start periodic checks
+	// Start grouped, synchronized health checks for standard intervals
+	m.startGroupedHealthChecks([]time.Duration{1 * time.Minute, 2 * time.Minute, 5 * time.Minute})
+
+	// Legacy periodic checks (for SSL-only endpoints and endpoints using non-standard intervals)
+	m.ticker = time.NewTicker(5 * time.Second)
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
@@ -259,7 +270,7 @@ func (m *Monitor) Start() {
 			case <-m.ctx.Done():
 				return
 			case <-m.ticker.C:
-				m.checkDueEndpoints()
+				m.checkDueEndpointsLegacy()
 			}
 		}
 	}()
@@ -330,6 +341,133 @@ func (m *Monitor) checkDueEndpoints() {
 	}
 	m.mu.RUnlock()
 	
+	wg.Wait()
+}
+
+func (m *Monitor) startGroupedHealthChecks(intervals []time.Duration) {
+	for _, interval := range intervals {
+		interval := interval
+
+		m.wg.Add(1)
+		go func() {
+			defer m.wg.Done()
+
+			now := time.Now()
+			next := now.Truncate(interval).Add(interval)
+			wait := next.Sub(now)
+
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-time.After(wait):
+				m.checkEndpointsByInterval(interval)
+			}
+
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-m.ctx.Done():
+					return
+				case <-ticker.C:
+					m.checkEndpointsByInterval(interval)
+				}
+			}
+		}()
+	}
+}
+
+func (m *Monitor) checkEndpointsByInterval(interval time.Duration) {
+	checkTime := time.Now()
+	var wg sync.WaitGroup
+
+	m.mu.RLock()
+	for _, state := range m.states {
+		state.mu.RLock()
+		enabled := state.Enabled
+		monitorHealth := state.MonitorHealth
+		checkInterval := state.CheckInterval
+		state.mu.RUnlock()
+
+		if !enabled || !monitorHealth {
+			continue
+		}
+		if checkInterval != interval {
+			continue
+		}
+
+		wg.Add(1)
+		go func(s *MonitorState) {
+			defer wg.Done()
+			m.checkEndpoint(s)
+		}(state)
+	}
+	m.mu.RUnlock()
+
+	wg.Wait()
+
+	// Send a single grouped Teams alert for this interval run
+	var unhealthyStates []*structs.EndpointState
+	if m.alerter != nil {
+		m.mu.RLock()
+		for _, state := range m.states {
+			state.mu.RLock()
+			enabled := state.Enabled
+			monitorHealth := state.MonitorHealth
+			checkInterval := state.CheckInterval
+			status := state.Status
+			suppressed := state.AlertsSuppressed
+			endpointState := state.EndpointState
+			state.mu.RUnlock()
+
+			if !enabled || suppressed || !monitorHealth {
+				continue
+			}
+			if checkInterval != interval {
+				continue
+			}
+			if status == structs.StatusUnhealthy {
+				unhealthyStates = append(unhealthyStates, endpointState)
+			}
+		}
+		m.mu.RUnlock()
+	}
+
+	if len(unhealthyStates) > 0 {
+		m.alerter.SendGroupedTeamsHealthAlert(interval, checkTime, unhealthyStates)
+	}
+}
+
+func (m *Monitor) checkDueEndpointsLegacy() {
+	var wg sync.WaitGroup
+	now := time.Now()
+
+	m.mu.RLock()
+	for _, state := range m.states {
+		state.mu.RLock()
+		enabled := state.Enabled
+		nextCheck := state.NextCheck
+		monitorHealth := state.MonitorHealth
+		checkInterval := state.CheckInterval
+		state.mu.RUnlock()
+
+		if !enabled || now.Before(nextCheck) {
+			continue
+		}
+
+		// Standard interval endpoints are handled by grouped schedulers
+		if monitorHealth && isStandardHealthInterval(checkInterval) {
+			continue
+		}
+
+		wg.Add(1)
+		go func(s *MonitorState) {
+			defer wg.Done()
+			m.checkEndpoint(s)
+		}(state)
+	}
+	m.mu.RUnlock()
+
 	wg.Wait()
 }
 
@@ -428,6 +566,7 @@ func (m *Monitor) handleCheckSuccess(state *MonitorState, responseTime time.Dura
 	defer state.mu.Unlock()
 
 	state.LastCheck = time.Now()
+	state.LastSuccess = state.LastCheck
 	state.NextCheck = time.Now().Add(state.CheckInterval)
 	state.ResponseTime = responseTime
 	state.ConsecutiveFailures = 0
@@ -505,6 +644,11 @@ func (m *Monitor) handleCheckFailure(state *MonitorState, errorMsg string, respo
 		state.LastStatusChange = time.Now()
 		if !state.AlertsSuppressed {
 			m.alerter.SendFailureAlert(state.Endpoint, state.EndpointState)
+		}
+	} else if state.Status == structs.StatusUnhealthy {
+		// Legacy behavior for non-standard intervals: send Teams on every check while unhealthy
+		if !state.AlertsSuppressed && !isStandardHealthInterval(state.CheckInterval) {
+			m.alerter.sendTeamsAlert(state.Endpoint, state.EndpointState)
 		}
 	}
 
