@@ -1,4 +1,9 @@
 package utils
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // GenerateIDWithURL creates a URL-safe ID from name and URL combination
 func GenerateIDWithURL(name, url string) string {
@@ -30,4 +35,48 @@ func GenerateIDWithURL(name, url string) string {
 		result = result[:len(result)-1]
 	}
 	return result
+}
+
+func FormatDurationDHm(d time.Duration) string {
+	if d < 0 {
+		return "-"
+	}
+
+	totalMinutes := int(d.Minutes())
+
+	days := totalMinutes / (24 * 60)
+	hours := (totalMinutes % (24 * 60)) / 60
+	minutes := totalMinutes % 60
+
+	var parts []string
+
+	if days > 0 {
+		unit := "day"
+		if days > 1 {
+			unit = "days"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", days, unit))
+	}
+
+	if hours > 0 {
+		unit := "hour"
+		if hours > 1 {
+			unit = "hours"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", hours, unit))
+	}
+
+	if minutes > 0 {
+		unit := "min"
+		if minutes > 1 {
+			unit = "mins"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", minutes, unit))
+	}
+
+	if len(parts) == 0 {
+		return "0 min"
+	}
+
+	return strings.Join(parts, " ")
 }

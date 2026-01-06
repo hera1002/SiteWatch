@@ -224,13 +224,14 @@ async function addEndpoint(e) {
     }
     
     const monitorHealth = document.getElementById('ep-monitor-health').checked;
+    const selectedInterval = document.getElementById('ep-interval').value || '1m';
     
     const data = {
         name: document.getElementById('ep-name').value,
         url: url,
         monitor_health: monitorHealth,
         method: monitorHealth ? document.getElementById('ep-method').value : 'GET',
-        check_interval: monitorHealth ? document.getElementById('ep-interval').value : '0s',
+        check_interval: monitorHealth ? selectedInterval : '0s',
         timeout: monitorHealth ? document.getElementById('ep-timeout').value : '10s',
         expected_status: monitorHealth ? (parseInt(document.getElementById('ep-status').value) || 200) : 200,
         failure_threshold: monitorHealth ? (parseInt(document.getElementById('ep-failure').value) || 3) : 3,
@@ -359,7 +360,7 @@ async function updateDashboard() {
 
 function renderEndpoints() {
     const allEndpoints = endpointsData;
-    let healthy = 0, unhealthy = 0, disabled = 0, total = 0, expiringCerts = 0, healthMonitored = 0;
+    let healthy = 0, unhealthy = 0, disabled = 0, total = 0, expiringCerts = 0, healthMonitored = 0, sslOnly = 0; ;
     let visibleCount = 0;
     
     const endpointsContainer = document.getElementById('endpoints');
@@ -374,6 +375,10 @@ function renderEndpoints() {
         
         // Count health monitored endpoints
         if (monitorHealth) healthMonitored++;
+        // ✅ SSL-only count
+        if (isEnabled && !monitorHealth) {
+            sslOnly++;
+        }
         
         // Count by status - only count enabled endpoints as healthy/unhealthy
         // Disabled endpoints are counted separately
@@ -484,7 +489,7 @@ function renderEndpoints() {
     }
     
     // Update stat counts
-    document.getElementById('total-endpoints').innerHTML = total + ' <span class="stat-detail">| ' + total + ' 🔒 ' + healthMonitored + ' 🚦</span>';
+    document.getElementById('total-endpoints').innerHTML = total + ' <span class="stat-detail">| ' + sslOnly + ' 🔒 ' + healthMonitored + ' 🚦</span>';
     document.getElementById('healthy-count').textContent = healthy;
     document.getElementById('unhealthy-count').textContent = unhealthy;
     document.getElementById('expiring-certs-count').textContent = expiringCerts;

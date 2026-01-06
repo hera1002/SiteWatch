@@ -47,6 +47,7 @@ func (h *HealthHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 			"method":                state.Endpoint.Method,
 			"status":                string(state.Status),
 			"last_check":            state.LastCheck.Format(time.RFC3339),
+			"last_success":          state.LastSuccess.Format(time.RFC3339),
 			"last_error":            state.LastError,
 			"response_time_ms":      float64(state.ResponseTime.Microseconds()) / 1000.0,
 			"consecutive_failures":  state.ConsecutiveFailures,

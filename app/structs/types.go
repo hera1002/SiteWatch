@@ -128,6 +128,7 @@ type EndpointState struct {
 	Endpoint             Endpoint
 	Status               HealthStatus
 	LastCheck            time.Time
+	LastSuccess          time.Time
 	LastStatusChange     time.Time
 	ConsecutiveFailures  int
 	ConsecutiveSuccesses int
