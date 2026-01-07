@@ -366,7 +366,34 @@ function renderEndpoints() {
     const endpointsContainer = document.getElementById('endpoints');
     endpointsContainer.innerHTML = '';
 
-    allEndpoints.forEach(endpoint => {
+    // Sort endpoints by priority: unhealthy → cert expiring → healthy → certs valid
+    const sortedEndpoints = [...allEndpoints].sort((a, b) => {
+        // Get priority values (lower number = higher priority)
+        const getPriority = (endpoint) => {
+            const isEnabled = endpoint.enabled !== false;
+            const monitorHealth = endpoint.monitor_health === true;
+            
+            if (!isEnabled) return 4; // disabled endpoints last
+            if (!monitorHealth) return 3; // SSL-only endpoints after health-monitored
+            
+            // Health monitored endpoints
+            if (endpoint.status === 'unhealthy') return 1; // unhealthy first
+            if (endpoint.ssl_expiring_soon) return 2; // cert expiring second
+            return 3; // healthy endpoints third
+        };
+        
+        const priorityA = getPriority(a);
+        const priorityB = getPriority(b);
+        
+        if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+        }
+        
+        // Same priority: sort alphabetically by name
+        return a.name.localeCompare(b.name);
+    });
+
+    sortedEndpoints.forEach(endpoint => {
         total++;
         const isEnabled = endpoint.enabled !== false;
         const isSuppressed = endpoint.alerts_suppressed === true;
