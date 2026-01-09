@@ -32,7 +32,7 @@ func NewHealthHandler(monitor *worker.Monitor, db *models.Database, config *stru
 // GetStatus returns the current status of all endpoints
 func (h *HealthHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	states := h.monitor.GetStatus()
-	
+
 	response := map[string]interface{}{
 		"endpoints": make(map[string]interface{}),
 		"timestamp": time.Now(),
@@ -55,12 +55,12 @@ func (h *HealthHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 			"ssl_expiring_soon":     state.SSLExpiringSoon,
 			"days_to_expiry":        state.DaysToExpiry,
 		}
-		
+
 		// Add SSL expiry date if available
 		if !state.SSLCertExpiry.IsZero() {
 			endpointData["ssl_cert_expiry"] = state.SSLCertExpiry.Format(time.RFC3339)
 		}
-		
+
 		endpoints[name] = endpointData
 	}
 	response["endpoints"] = endpoints
@@ -87,26 +87,26 @@ func (h *HealthHandler) GetEndpoints(w http.ResponseWriter, r *http.Request) {
 // GetExpiringCerts returns list of endpoints with expiring SSL certificates
 func (h *HealthHandler) GetExpiringCerts(w http.ResponseWriter, r *http.Request) {
 	states := h.monitor.GetStatus()
-	
+
 	expiringCerts := []map[string]interface{}{}
-	
+
 	for _, state := range states {
 		if state.SSLExpiringSoon {
 			certInfo := map[string]interface{}{
-				"id":              state.ID,
-				"name":            state.Endpoint.Name,
-				"url":             state.Endpoint.URL,
-				"days_to_expiry":  state.DaysToExpiry,
+				"id":             state.ID,
+				"name":           state.Endpoint.Name,
+				"url":            state.Endpoint.URL,
+				"days_to_expiry": state.DaysToExpiry,
 			}
-			
+
 			if !state.SSLCertExpiry.IsZero() {
 				certInfo["expiry_date"] = state.SSLCertExpiry.Format(time.RFC3339)
 			}
-			
+
 			expiringCerts = append(expiringCerts, certInfo)
 		}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"expiring_certs": expiringCerts,
@@ -197,7 +197,7 @@ func (h *HealthHandler) AddEndpoint(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to check existing endpoints: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	for _, ep := range allEndpoints {
 		if ep.Name == req.Name {
 			http.Error(w, "Endpoint with this name already exists", http.StatusConflict)
@@ -265,7 +265,7 @@ func (h *HealthHandler) AddEndpoint(w http.ResponseWriter, r *http.Request) {
 // DeleteEndpoint removes an endpoint from monitoring
 func (h *HealthHandler) DeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 	logger.Debugf("Delete endpoint request: method=%s", r.Method)
-	
+
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		logger.Debugf("Delete endpoint: method not allowed")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -274,7 +274,7 @@ func (h *HealthHandler) DeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	id := r.URL.Query().Get("id")
 	logger.Debugf("Delete endpoint: query id=%s", id)
-	
+
 	if id == "" {
 		var req struct {
 			ID string `json:"id"`
@@ -407,7 +407,7 @@ func (h *HealthHandler) ToggleAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ID        string `json:"id"`
+		ID         string `json:"id"`
 		Suppressed bool   `json:"suppressed"`
 	}
 
@@ -438,7 +438,7 @@ func (h *HealthHandler) ToggleAlerts(w http.ResponseWriter, r *http.Request) {
 
 // UpdateEndpoint updates endpoint settings
 func (h *HealthHandler) UpdateEndpoint(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -570,7 +570,7 @@ func (h *HealthHandler) EnableHealthMonitoring(w http.ResponseWriter, r *http.Re
 
 	// Update health monitoring settings
 	endpoint.MonitorHealth = true
-	
+
 	if req.CheckInterval != "" {
 		interval, err := time.ParseDuration(req.CheckInterval)
 		if err != nil {
