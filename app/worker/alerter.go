@@ -59,7 +59,7 @@ func (a *Alerter) SendGroupedTeamsHealthAlert(interval time.Duration, checkTime 
 	if !a.config.Enabled {
 		return
 	}
-	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
+	if !a.config.TeamsEnabled || a.config.TeamsWebhookHealthCheck == "" {
 		return
 	}
 	if len(unhealthyStates) == 0 {
@@ -81,8 +81,8 @@ func (a *Alerter) SendGroupedTeamsHealthAlert(interval time.Duration, checkTime 
 	var builder strings.Builder
 
 	builder.WriteString(
-	fmt.Sprintf("📢 **HEALTH MONITOR ALERT (%d min)**\n\n", int(interval.Minutes())),
-)
+		fmt.Sprintf("📢 HEALTH MONITOR ALERT (%d min) \n\n", int(interval.Minutes())),
+	)
 	builder.WriteString("| Site Name | URL | Status | Last Success Time | Down Duration | Failure Count | Response Time |\n")
 	builder.WriteString("|---|---|---|---|---|---|---|\n")
 
@@ -98,6 +98,12 @@ func (a *Alerter) SendGroupedTeamsHealthAlert(interval time.Duration, checkTime 
 
 		}
 
+		responseTime := "-"
+		if state.ResponseTime > 0 {
+			responseMs := float64(state.ResponseTime.Microseconds()) / 1000.0
+			responseTime = fmt.Sprintf("%.2fms", responseMs)
+		}
+
 		builder.WriteString(fmt.Sprintf(
 			"| %s | %s | %s | %s | %s | %d | %s |\n",
 			state.Endpoint.Name,
@@ -106,7 +112,7 @@ func (a *Alerter) SendGroupedTeamsHealthAlert(interval time.Duration, checkTime 
 			lastSuccess,
 			downFor,
 			state.ConsecutiveFailures,
-			state.ResponseTime.String(),
+			responseTime,
 		))
 	}
 
@@ -123,7 +129,7 @@ func (a *Alerter) SendGroupedTeamsHealthAlert(interval time.Duration, checkTime 
 	}
 
 	resp, err := http.Post(
-		a.config.TeamsWebhook,
+		a.config.TeamsWebhookHealthCheck,
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
@@ -297,7 +303,7 @@ func (a *Alerter) sendEmailAlert(subject, message string) {
 	)
 
 	to := strings.Join(a.config.EmailConfig.To, ",")
-	
+
 	emailBody := fmt.Sprintf(
 		"From: %s\r\n"+
 			"To: %s\r\n"+
@@ -311,7 +317,7 @@ func (a *Alerter) sendEmailAlert(subject, message string) {
 	)
 
 	addr := fmt.Sprintf("%s:%d", a.config.EmailConfig.SMTPHost, a.config.EmailConfig.SMTPPort)
-	
+
 	err := smtp.SendMail(
 		addr,
 		auth,
@@ -328,79 +334,6 @@ func (a *Alerter) sendEmailAlert(subject, message string) {
 	logger.Infof("Email alert sent successfully to: %s", to)
 }
 
-// sendTeamsAlert sends alerts to Microsoft Teams
-func (a *Alerter) sendTeamsAlert(endpoint structs.Endpoint, state *structs.EndpointState) {
-	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
-		return
-	}
-
-	loc, err := time.LoadLocation("Asia/Kolkata")
-	if err != nil {
-		loc = time.FixedZone("IST", 5*60*60+30*60)
-	}
-
-	nowIST := time.Now().In(loc)
-	lastSuccess := state.LastCheck.In(loc)
-
-	downFor := "-"
-	if state.Status != "HEALTHY" {
-		downFor = time.Since(state.LastStatusChange).Round(time.Second).String()
-	}
-
-	statusIcon := "🟢 UP"
-	if state.Status != "HEALTHY" {
-		statusIcon = "🔴 DOWN"
-	}
-
-	var builder strings.Builder
-
-	builder.WriteString("📢 **HEALTH MONITOR ALERT**\n\n")
-	builder.WriteString("| Site Name | URL | Status | Last Success Time | Down For | Failure Count | Response Time | Time |\n")
-	builder.WriteString("|---|---|---|---|---|---|---|---|\n")
-
-	builder.WriteString(fmt.Sprintf(
-		"| %s | %s | %s | %s | %s | %d | %s | %s |\n",
-		endpoint.Name,
-		endpoint.URL,
-		statusIcon,
-		lastSuccess.Format("02 Jan 2006 03:04 PM"),
-		downFor,
-		state.ConsecutiveFailures,
-		state.ResponseTime.String(),
-		nowIST.Format("02 Jan 2006 03:04 PM"),
-	))
-
-	builder.WriteString("\n🔗 For more info visit: https://sitewatch.ezeebits.in\n")
-
-	payload := map[string]interface{}{
-		"text": builder.String(),
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		logger.Errorf("Teams alert marshal error: %v", err)
-		return
-	}
-
-	resp, err := http.Post(
-		a.config.TeamsWebhook,
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
-	if err != nil {
-		logger.Errorf("Teams alert failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		logger.Infof("Teams alert sent for %s", endpoint.Name)
-	} else {
-		logger.Errorf("Teams webhook returned status %d", resp.StatusCode)
-	}
-}
-
-
 // SSLExpiryInfo holds information about an expiring SSL certificate
 type SSLExpiryInfo struct {
 	EndpointName string
@@ -409,9 +342,8 @@ type SSLExpiryInfo struct {
 	DaysToExpiry int
 }
 
-
 func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
-	if !a.config.TeamsEnabled || a.config.TeamsWebhook == "" {
+	if !a.config.TeamsEnabled || a.config.TeamsWebhookSSLExpiry == "" {
 		return
 	}
 
@@ -428,7 +360,7 @@ func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
 	// 🔹 Build MARKDOWN table for Teams
 	var builder strings.Builder
 
-	builder.WriteString("📢**SSL EXPIRY NOTIFICATIONS**\n\n")
+	builder.WriteString("📢 SSL EXPIRY NOTIFICATIONS\n\n")
 	builder.WriteString("| Endpoint | URL | Expiry Date | Days Left | Severity |\n")
 	builder.WriteString("|---------|-----|------------|-----------|----------|\n")
 
@@ -462,7 +394,7 @@ func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
 	}
 
 	resp, err := http.Post(
-		a.config.TeamsWebhook,
+		a.config.TeamsWebhookSSLExpiry,
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
@@ -478,4 +410,3 @@ func (a *Alerter) SendSSLExpirySummary(expiringCerts []SSLExpiryInfo) {
 		logger.Errorf("Teams webhook returned status %d", resp.StatusCode)
 	}
 }
-

@@ -35,13 +35,13 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 // Config represents the application configuration
 type Config struct {
-	Server              ServerConfig `json:"server"`
-	CheckInterval       Duration     `json:"check_interval"`
-	SSLExpiryWarningDays int         `json:"ssl_expiry_warning_days"`
-	SSLSummaryTime      string       `json:"ssl_summary_time"`
-	AdminPasskey        string       `json:"admin_passkey"`
-	Endpoints           []Endpoint   `json:"endpoints"`
-	Alerting            Alerting     `json:"alerting"`
+	Server               ServerConfig `json:"server"`
+	CheckInterval        Duration     `json:"check_interval"`
+	SSLExpiryWarningDays int          `json:"ssl_expiry_warning_days"`
+	SSLSummaryTime       string       `json:"ssl_summary_time"`
+	AdminPasskey         string       `json:"admin_passkey"`
+	Endpoints            []Endpoint   `json:"endpoints"`
+	Alerting             Alerting     `json:"alerting"`
 }
 
 // ServerConfig represents web server configuration
@@ -64,15 +64,16 @@ type Endpoint struct {
 
 // Alerting represents alerting configuration
 type Alerting struct {
-	Enabled      bool              `json:"enabled"`
-	TeamsEnabled bool              `json:"teams_enabled"`
-	TeamsWebhook string            `json:"teams_webhook"`
-	WebhookURL   string            `json:"webhook_url"`
-	EmailEnabled bool              `json:"email_enabled"`
-	EmailConfig  EmailConfig       `json:"email_config"`
-	SlackEnabled bool              `json:"slack_enabled"`
-	SlackWebhook string            `json:"slack_webhook"`
-	CustomFields map[string]string `json:"custom_fields"`
+	Enabled                 bool              `json:"enabled"`
+	TeamsEnabled            bool              `json:"teams_enabled"`
+	TeamsWebhookHealthCheck string            `json:"teams_webhook_health_check"`
+	TeamsWebhookSSLExpiry   string            `json:"teams_webhook_ssl_expiry"`
+	WebhookURL              string            `json:"webhook_url"`
+	EmailEnabled            bool              `json:"email_enabled"`
+	EmailConfig             EmailConfig       `json:"email_config"`
+	SlackEnabled            bool              `json:"slack_enabled"`
+	SlackWebhook            string            `json:"slack_webhook"`
+	CustomFields            map[string]string `json:"custom_fields"`
 }
 
 // EmailConfig represents email configuration

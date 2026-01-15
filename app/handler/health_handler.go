@@ -614,3 +614,22 @@ func (h *HealthHandler) EnableHealthMonitoring(w http.ResponseWriter, r *http.Re
 		"message": "Health monitoring enabled",
 	})
 }
+
+// ReRunSSLCheck triggers SSL validation for all endpoints
+func (h *HealthHandler) ReRunSSLCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	logger.Infof("Manual SSL recheck triggered")
+
+	// Trigger SSL check for all endpoints
+	h.monitor.TriggerSSLRecheck()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "SSL validation triggered for all endpoints",
+	})
+}

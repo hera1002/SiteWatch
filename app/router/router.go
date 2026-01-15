@@ -45,6 +45,9 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("/api/verify-passkey", r.healthHandler.VerifyPasskey)
 	r.mux.HandleFunc("/api/endpoints/enable-health", r.healthHandler.EnableHealthMonitoring)
 
+	// ✅ NEW: Manual SSL recheck
+	r.mux.HandleFunc("/api/ssl/recheck", r.healthHandler.ReRunSSLCheck)
+
 	// Static files
 	r.mux.HandleFunc("/static/app.js", r.serveJS)
 

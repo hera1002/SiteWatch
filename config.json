@@ -30,6 +30,7 @@
   "alerting": {
     "enabled": true,
     "teams_enabled": true,
-    "teams_webhook": "https://default45364bf57a3743498c7fc406c7ce82.7c.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/a0656a60d01d40a7bd27d91a9bc369c6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=jurQyuNRupIti3lo4SO8udPA2Hj1IDr-2GFHA3QH5Kk"
+    "teams_webhook_health_check": "https://default45364bf57a3743498c7fc406c7ce82.7c.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/a0656a60d01d40a7bd27d91a9bc369c6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=jurQyuNRupIti3lo4SO8udPA2Hj1IDr-2GFHA3QH5Kk",
+    "teams_webhook_ssl_expiry": "https://default45364bf57a3743498c7fc406c7ce82.7c.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/a0656a60d01d40a7bd27d91a9bc369c6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=jurQyuNRupIti3lo4SO8udPA2Hj1IDr-2GFHA3QH5Kk"
   }
 }

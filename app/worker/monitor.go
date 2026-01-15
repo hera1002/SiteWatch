@@ -34,7 +34,7 @@ type MonitorState struct {
 // NewMonitor creates a new health monitor
 func NewMonitor(config *structs.Config, db *models.Database) *Monitor {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	monitor := &Monitor{
 		config:  config,
 		states:  make(map[string]*MonitorState),
@@ -122,7 +122,7 @@ func (m *Monitor) AddEndpoint(stored *structs.StoredEndpoint) error {
 // RemoveEndpoint removes an endpoint from monitoring
 func (m *Monitor) RemoveEndpoint(id string) error {
 	logger.Debugf("RemoveEndpoint called with id: %s", id)
-	
+
 	if err := m.db.DeleteEndpoint(id); err != nil {
 		logger.Errorf("Error deleting from DB: %v", err)
 		return err
@@ -295,17 +295,17 @@ func (m *Monitor) Stop() {
 // checkAllEndpoints checks all configured endpoints
 func (m *Monitor) checkAllEndpoints() {
 	var wg sync.WaitGroup
-	
+
 	m.mu.RLock()
 	for _, state := range m.states {
 		state.mu.RLock()
 		enabled := state.Enabled
 		state.mu.RUnlock()
-		
+
 		if !enabled {
 			continue
 		}
-		
+
 		wg.Add(1)
 		go func(s *MonitorState) {
 			defer wg.Done()
@@ -313,7 +313,7 @@ func (m *Monitor) checkAllEndpoints() {
 		}(state)
 	}
 	m.mu.RUnlock()
-	
+
 	wg.Wait()
 }
 
@@ -321,18 +321,18 @@ func (m *Monitor) checkAllEndpoints() {
 func (m *Monitor) checkDueEndpoints() {
 	var wg sync.WaitGroup
 	now := time.Now()
-	
+
 	m.mu.RLock()
 	for _, state := range m.states {
 		state.mu.RLock()
 		enabled := state.Enabled
 		nextCheck := state.NextCheck
 		state.mu.RUnlock()
-		
+
 		if !enabled || now.Before(nextCheck) {
 			continue
 		}
-		
+
 		wg.Add(1)
 		go func(s *MonitorState) {
 			defer wg.Done()
@@ -340,7 +340,7 @@ func (m *Monitor) checkDueEndpoints() {
 		}(state)
 	}
 	m.mu.RUnlock()
-	
+
 	wg.Wait()
 }
 
@@ -485,14 +485,14 @@ func (m *Monitor) checkEndpoint(state *MonitorState) {
 	}
 
 	start := time.Now()
-	
+
 	state.mu.RLock()
 	timeout := state.Endpoint.Timeout.Duration
 	method := state.Endpoint.Method
 	headers := state.Endpoint.Headers
 	expectedStatus := state.Endpoint.ExpectedStatus
 	state.mu.RUnlock()
-	
+
 	ctx, cancel := context.WithTimeout(m.ctx, timeout)
 	defer cancel()
 
@@ -521,7 +521,7 @@ func (m *Monitor) checkEndpoint(state *MonitorState) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != expectedStatus {
-		m.handleCheckFailure(state, 
+		m.handleCheckFailure(state,
 			fmt.Sprintf("unexpected status code: got %d, expected %d", resp.StatusCode, expectedStatus),
 			responseTime)
 		return
@@ -584,7 +584,7 @@ func (m *Monitor) handleCheckSuccess(state *MonitorState, responseTime time.Dura
 	// Run immediately for new endpoints (LastSSLCheck is zero) or if 24 hours have passed
 	now := time.Now()
 	shouldCheckSSL := state.LastSSLCheck.IsZero() || now.Sub(state.LastSSLCheck) >= 24*time.Hour
-	
+
 	if shouldCheckSSL {
 		sslInfo := CheckSSLCertificate(state.Endpoint.URL, m.config.SSLExpiryWarningDays)
 		if sslInfo.IsHTTPS {
@@ -592,17 +592,17 @@ func (m *Monitor) handleCheckSuccess(state *MonitorState, responseTime time.Dura
 			state.DaysToExpiry = sslInfo.DaysToExpiry
 			state.SSLExpiringSoon = sslInfo.ExpiringSoon
 			state.LastSSLCheck = now
-			
+
 			if sslInfo.ExpiringSoon {
 				logger.Infof("[%s] ⚠️  SSL certificate expiring in %d days", state.Endpoint.Name, sslInfo.DaysToExpiry)
 			}
-			
-			logger.Infof("[%s] SSL certificate validated (expires: %s, days remaining: %d)", 
+
+			logger.Infof("[%s] SSL certificate validated (expires: %s, days remaining: %d)",
 				state.Endpoint.Name, sslInfo.Expiry.Format("2006-01-02"), sslInfo.DaysToExpiry)
 		}
 	}
 
-	logger.Infof("[%s] ✓ Health check passed (status: %s, response time: %v)", 
+	logger.Infof("[%s] ✓ Health check passed (status: %s, response time: %v)",
 		state.Endpoint.Name, state.Status, responseTime)
 
 	// Send recovery alert if endpoint recovered
@@ -636,7 +636,7 @@ func (m *Monitor) handleCheckFailure(state *MonitorState, errorMsg string, respo
 		state.Status = structs.StatusUnhealthy
 	}
 
-	logger.Infof("[%s] ✗ Health check failed (status: %s, error: %s)", 
+	logger.Infof("[%s] ✗ Health check failed (status: %s, error: %s)",
 		state.Endpoint.Name, state.Status, errorMsg)
 
 	// Send alert if endpoint became unhealthy
@@ -644,11 +644,6 @@ func (m *Monitor) handleCheckFailure(state *MonitorState, errorMsg string, respo
 		state.LastStatusChange = time.Now()
 		if !state.AlertsSuppressed {
 			m.alerter.SendFailureAlert(state.Endpoint, state.EndpointState)
-		}
-	} else if state.Status == structs.StatusUnhealthy {
-		// Legacy behavior for non-standard intervals: send Teams on every check while unhealthy
-		if !state.AlertsSuppressed && !isStandardHealthInterval(state.CheckInterval) {
-			m.alerter.sendTeamsAlert(state.Endpoint, state.EndpointState)
 		}
 	}
 
@@ -706,7 +701,7 @@ func (m *Monitor) startSSLExpirySummaryScheduler() {
 
 	for {
 		now := time.Now().In(loc)
-		
+
 		// Calculate next scheduled time
 		next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
 		if now.After(next) {
@@ -730,7 +725,7 @@ func (m *Monitor) startSSLExpirySummaryScheduler() {
 // sendSSLExpirySummary collects and sends SSL expiry summary
 func (m *Monitor) sendSSLExpirySummary() {
 	expiringCerts := m.getExpiringCertificates()
-	
+
 	if len(expiringCerts) > 0 {
 		logger.Infof("Sending SSL expiry summary for %d certificates", len(expiringCerts))
 		m.alerter.SendSSLExpirySummary(expiringCerts)
@@ -744,16 +739,21 @@ func (m *Monitor) getExpiringCertificates() []SSLExpiryInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	loc, _ := time.LoadLocation("Asia/Kolkata")
+	now := time.Now().In(loc)
 	var expiringCerts []SSLExpiryInfo
 
 	for _, state := range m.states {
 		state.mu.RLock()
 		if state.SSLExpiringSoon && !state.SSLCertExpiry.IsZero() {
+
+			expiry := state.SSLCertExpiry.In(loc)
+			daysLeft := int(expiry.Sub(now).Hours() / 24)
 			expiringCerts = append(expiringCerts, SSLExpiryInfo{
 				EndpointName: state.Endpoint.Name,
 				URL:          state.Endpoint.URL,
-				ExpiryDate:   state.SSLCertExpiry,
-				DaysToExpiry: state.DaysToExpiry,
+				ExpiryDate:   expiry,
+				DaysToExpiry: daysLeft,
 			})
 		}
 		state.mu.RUnlock()
@@ -769,4 +769,43 @@ func (m *Monitor) getExpiringCertificates() []SSLExpiryInfo {
 	}
 
 	return expiringCerts
+}
+
+// forceSSLCheck runs SSL validation immediately (ignores 24h rule)
+func (m *Monitor) forceSSLCheck(state *MonitorState) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	sslInfo := CheckSSLCertificate(state.Endpoint.URL, m.config.SSLExpiryWarningDays)
+	if !sslInfo.IsHTTPS {
+		return
+	}
+
+	state.SSLCertExpiry = sslInfo.Expiry
+	state.DaysToExpiry = sslInfo.DaysToExpiry
+	state.SSLExpiringSoon = sslInfo.ExpiringSoon
+	state.LastSSLCheck = time.Now()
+
+	if sslInfo.ExpiringSoon {
+		logger.Infof("[%s] ⚠️ SSL expiring in %d days",
+			state.Endpoint.Name, sslInfo.DaysToExpiry)
+	}
+
+	logger.Infof("[%s] 🔁 SSL revalidated (expires: %s, days remaining: %d)",
+		state.Endpoint.Name,
+		sslInfo.Expiry.Format("2006-01-02"),
+		sslInfo.DaysToExpiry,
+	)
+}
+
+// TriggerSSLRecheck forces SSL validation for all endpoints
+func (m *Monitor) TriggerSSLRecheck() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	logger.Infof("🔄 Manual SSL recheck started for all endpoints")
+
+	for _, state := range m.states {
+		go m.forceSSLCheck(state)
+	}
 }
